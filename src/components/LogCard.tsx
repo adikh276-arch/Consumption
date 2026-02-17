@@ -3,7 +3,9 @@ import Stepper from './Stepper';
 import Chip from './Chip';
 import MoodSelector from './MoodSelector';
 import { LOCATIONS, TRIGGERS, SmokeLog } from '@/types/smoking';
-import { addLog, generateId, formatTimeIST } from '@/utils/storage';
+import { getUserId } from '@/lib/auth';
+import { saveSmokingLog } from '@/lib/db';
+import { generateId, formatTimeIST } from '@/utils/storage';
 import { toast } from 'sonner';
 
 const COOLDOWN_MS = 10_000; // 10 second cooldown
@@ -20,8 +22,14 @@ const LogCard: React.FC<{ onSaved: () => void }> = ({ onSaved }) => {
   const toggleTrigger = (t: string) =>
     setTriggers(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (cooldown) return;
+    const userId = getUserId();
+    if (!userId) {
+      toast.error("User session not found");
+      return;
+    }
+
     const now = new Date();
     const entry: SmokeLog = {
       id: generateId(),
@@ -32,27 +40,33 @@ const LogCard: React.FC<{ onSaved: () => void }> = ({ onSaved }) => {
       moodBefore: mood,
       notes,
     };
-    addLog(entry);
-    toast(`Entry saved — ${count} cigarette(s) at ${formatTimeIST(now)}`);
-    setCount(1);
-    setLocation('');
-    setTriggers([]);
-    setMood('');
-    setNotes('');
-    onSaved();
 
-    // Start cooldown
-    setCooldown(true);
-    let remaining = COOLDOWN_MS / 1000;
-    setCooldownSec(remaining);
-    const interval = setInterval(() => {
-      remaining -= 1;
+    try {
+      await saveSmokingLog(userId, entry);
+      toast(`Entry saved — ${count} cigarette(s) at ${formatTimeIST(now)}`);
+      setCount(1);
+      setLocation('');
+      setTriggers([]);
+      setMood('');
+      setNotes('');
+      onSaved();
+
+      // Start cooldown
+      setCooldown(true);
+      let remaining = COOLDOWN_MS / 1000;
       setCooldownSec(remaining);
-      if (remaining <= 0) {
-        clearInterval(interval);
-        setCooldown(false);
-      }
-    }, 1000);
+      const interval = setInterval(() => {
+        remaining -= 1;
+        setCooldownSec(remaining);
+        if (remaining <= 0) {
+          clearInterval(interval);
+          setCooldown(false);
+        }
+      }, 1000);
+    } catch (error) {
+      console.error("Failed to save log:", error);
+      toast.error("Failed to save entry");
+    }
   };
 
   return (
@@ -105,11 +119,10 @@ const LogCard: React.FC<{ onSaved: () => void }> = ({ onSaved }) => {
       <button
         onClick={handleSave}
         disabled={cooldown}
-        className={`w-full h-[52px] rounded-btn font-heading text-[15px] font-semibold tracking-[0.02em] btn-press transition-colors ${
-          cooldown
-            ? 'bg-muted text-background cursor-not-allowed'
-            : 'bg-primary text-primary-foreground'
-        }`}
+        className={`w-full h-[52px] rounded-btn font-heading text-[15px] font-semibold tracking-[0.02em] btn-press transition-colors ${cooldown
+          ? 'bg-muted text-background cursor-not-allowed'
+          : 'bg-primary text-primary-foreground'
+          }`}
       >
         {cooldown ? `Wait ${cooldownSec}s` : 'Save Entry'}
       </button>

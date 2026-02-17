@@ -1,11 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { getProfile, getSmokingDurationMonths, formatIndianNumber } from '@/utils/storage';
+import { SmokingProfile } from '@/types/smoking';
+import { getUserId } from '@/lib/auth';
+import { getSmokingProfile } from '@/lib/db';
+import { getSmokingDurationMonths, formatIndianNumber } from '@/utils/storage';
 import { HEALTH_FACTS } from '@/types/smoking';
 
 const CumulativeDataCard: React.FC = () => {
-  const profile = getProfile();
+  const [profile, setProfile] = useState<SmokingProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [factIndex, setFactIndex] = useState(0);
   const [fadingOut, setFadingOut] = useState(false);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const userId = getUserId();
+      if (!userId) return;
+      try {
+        const data = await getSmokingProfile(userId);
+        setProfile(data);
+      } catch (error) {
+        console.error("Failed to fetch cumulative data profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -18,6 +38,7 @@ const CumulativeDataCard: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  if (loading) return <div className="p-4 text-center text-xs text-muted font-body">Calculating cumulative data...</div>;
   if (!profile) return null;
 
   const months = getSmokingDurationMonths(profile);

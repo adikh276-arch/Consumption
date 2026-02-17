@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Stepper from './Stepper';
 import { SmokingProfile, MONTHS } from '@/types/smoking';
-import { getProfile, saveProfile, isProfileSet } from '@/utils/storage';
+import { getUserId } from '@/lib/auth';
+import { getSmokingProfile, saveSmokingProfile } from '@/lib/db';
+import { isProfileSet, setProfileSetFlag } from '@/utils/storage';
 import { toast } from 'sonner';
 
 const currentYear = new Date().getFullYear();
@@ -9,18 +11,38 @@ const years = Array.from({ length: currentYear - 1970 + 1 }, (_, i) => 1970 + i)
 
 const BaselineProfileCard: React.FC<{ onSave: () => void }> = ({ onSave }) => {
   const [expanded, setExpanded] = useState(!isProfileSet());
-  const [profile, setProfile] = useState<SmokingProfile>(() => {
-    const saved = getProfile();
-    return saved || {
-      startMonth: 0,
-      startYear: 2015,
-      avgPerDay: 10,
-      brand: '',
-      perPack: 20,
-      nicotineMg: 0.8,
-      tarMg: 8,
-    };
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<SmokingProfile>({
+    startMonth: 0,
+    startYear: 2015,
+    avgPerDay: 10,
+    brand: '',
+    perPack: 20,
+    nicotineMg: 0.8,
+    tarMg: 8,
   });
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const userId = getUserId();
+      if (!userId) return;
+      try {
+        const saved = await getSmokingProfile(userId);
+        if (saved) {
+          setProfile(saved);
+          setExpanded(false);
+          setProfileSetFlag();
+        } else {
+          setExpanded(true);
+        }
+      } catch (error) {
+        console.error("Failed to fetch profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
 
   const update = (patch: Partial<SmokingProfile>) => setProfile(p => ({ ...p, ...patch }));
 
@@ -33,12 +55,25 @@ const BaselineProfileCard: React.FC<{ onSave: () => void }> = ({ onSave }) => {
     return `${y} years, ${m} months`;
   };
 
-  const handleSave = () => {
-    saveProfile(profile);
-    setExpanded(false);
-    toast('Profile saved');
-    onSave();
+  const handleSave = async () => {
+    const userId = getUserId();
+    if (!userId) {
+      toast.error("User session not found");
+      return;
+    }
+    try {
+      await saveSmokingProfile(userId, profile);
+      setProfileSetFlag();
+      setExpanded(false);
+      toast('Profile saved');
+      onSave();
+    } catch (error) {
+      console.error("Failed to save profile:", error);
+      toast.error("Failed to save profile");
+    }
   };
+
+  if (loading) return <div className="p-4 text-center text-xs text-muted font-body">Loading profile...</div>;
 
   if (!expanded) {
     return (
@@ -102,11 +137,10 @@ const BaselineProfileCard: React.FC<{ onSave: () => void }> = ({ onSave }) => {
               key={n}
               type="button"
               onClick={() => update({ perPack: n })}
-              className={`flex-1 py-2 rounded-chip font-body text-sm transition-colors btn-press ${
-                profile.perPack === n
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-surface border border-border text-muted'
-              }`}
+              className={`flex-1 py-2 rounded-chip font-body text-sm transition-colors btn-press ${profile.perPack === n
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-surface border border-border text-muted'
+                }`}
             >
               {n}
             </button>

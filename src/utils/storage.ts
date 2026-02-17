@@ -1,37 +1,12 @@
 import { SmokingProfile, SmokeLog } from '@/types/smoking';
 
-export function getProfile(): SmokingProfile | null {
-  const raw = localStorage.getItem('smokingProfile');
-  return raw ? JSON.parse(raw) : null;
-}
-
-export function saveProfile(p: SmokingProfile) {
-  localStorage.setItem('smokingProfile', JSON.stringify(p));
-  localStorage.setItem('smokeProfileSet', 'true');
-}
-
+// Local storage keys for UI state only
 export function isProfileSet(): boolean {
   return localStorage.getItem('smokeProfileSet') === 'true';
 }
 
-export function getLogs(): SmokeLog[] {
-  const raw = localStorage.getItem('smokeLogs');
-  return raw ? JSON.parse(raw) : [];
-}
-
-export function saveLogs(logs: SmokeLog[]) {
-  localStorage.setItem('smokeLogs', JSON.stringify(logs));
-}
-
-export function addLog(log: SmokeLog) {
-  const logs = getLogs();
-  logs.unshift(log);
-  saveLogs(logs);
-}
-
-export function removeLog(id: string) {
-  const logs = getLogs().filter(l => l.id !== id);
-  saveLogs(logs);
+export function setProfileSetFlag() {
+  localStorage.setItem('smokeProfileSet', 'true');
 }
 
 export function generateId(): string {
@@ -65,12 +40,6 @@ export function formatIndianNumber(n: number): string {
   }
   if (remaining.length > 0) result = remaining + ',' + result;
   return result;
-}
-
-export function getTodayLogs(): SmokeLog[] {
-  const today = new Date();
-  const todayStr = formatDateDMY(today);
-  return getLogs().filter(l => formatDateDMY(new Date(l.timestamp)) === todayStr);
 }
 
 export function getSmokingDurationMonths(profile: SmokingProfile): number {

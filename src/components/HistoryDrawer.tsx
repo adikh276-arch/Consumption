@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { SmokeLog } from '@/types/smoking';
-import { getLogs, removeLog, formatTimeIST, formatDateDMY } from '@/utils/storage';
+import { getUserId } from '@/lib/auth';
+import { getSmokeLogs, deleteSmokingLog } from '@/lib/db';
+import { formatTimeIST, formatDateDMY } from '@/utils/storage';
 import { toast } from 'sonner';
 
 interface HistoryDrawerProps {
@@ -13,10 +15,28 @@ interface HistoryDrawerProps {
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, refreshKey }) => {
+  const [logs, setLogs] = useState<SmokeLog[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [closing, setClosing] = useState(false);
 
-  const logs = getLogs();
+  useEffect(() => {
+    const fetchLogs = async () => {
+      if (!open) return;
+      const userId = getUserId();
+      if (!userId) return;
+      setLoading(true);
+      try {
+        const data = await getSmokeLogs(userId);
+        setLogs(data);
+      } catch (error) {
+        console.error("Failed to fetch history logs:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLogs();
+  }, [open, refreshKey]);
 
   const handleClose = () => {
     setClosing(true);
@@ -51,10 +71,10 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, refreshKey
   // Group logs by date
   const filteredLogs = search
     ? logs.filter(l =>
-        l.location.toLowerCase().includes(search.toLowerCase()) ||
-        l.triggers.some(t => t.toLowerCase().includes(search.toLowerCase())) ||
-        l.notes.toLowerCase().includes(search.toLowerCase())
-      )
+      l.location.toLowerCase().includes(search.toLowerCase()) ||
+      l.triggers.some(t => t.toLowerCase().includes(search.toLowerCase())) ||
+      (l.notes && l.notes.toLowerCase().includes(search.toLowerCase()))
+    )
     : logs;
 
   const grouped = useMemo(() => {
@@ -67,9 +87,17 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, refreshKey
     return Object.entries(map);
   }, [filteredLogs]);
 
-  const handleRemove = (id: string) => {
-    removeLog(id);
-    toast('Entry removed');
+  const handleRemove = async (id: string) => {
+    const userId = getUserId();
+    if (!userId) return;
+    try {
+      await deleteSmokingLog(userId, id);
+      setLogs(prev => prev.filter(l => l.id !== id));
+      toast('Entry removed');
+    } catch (error) {
+      console.error("Failed to remove history log:", error);
+      toast.error("Failed to remove entry");
+    }
   };
 
   const handleExport = () => {
@@ -95,70 +123,82 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, refreshKey
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-4">
-          {/* 7-day chart */}
-          <div className="bg-card rounded-card border border-border p-4">
-            <div className="flex items-end justify-between gap-2 h-[120px]">
-              {chartData.map((d, i) => (
-                <div key={i} className="flex flex-col items-center gap-1 flex-1">
-                  <span className="font-body text-[10px] text-muted">{d.count}</span>
-                  <div
-                    className={`w-full rounded-t-md transition-all ${d.isToday ? 'bg-primary' : 'bg-primary/60'}`}
-                    style={{ height: `${Math.max(4, (d.count / maxCount) * 80)}px` }}
-                  />
-                  <span className="font-body text-[10px] text-muted">{d.day}</span>
+          {loading ? (
+            <p className="text-center font-body text-sm text-muted py-8">Loading records...</p>
+          ) : (
+            <>
+              {/* 7-day chart */}
+              <div className="bg-card rounded-card border border-border p-4">
+                <div className="flex items-end justify-between gap-2 h-[120px]">
+                  {chartData.map((d, i) => (
+                    <div key={i} className="flex flex-col items-center gap-1 flex-1">
+                      <span className="font-body text-[10px] text-muted">{d.count}</span>
+                      <div
+                        className={`w-full rounded-t-md transition-all ${d.isToday ? 'bg-primary' : 'bg-primary/60'}`}
+                        style={{ height: `${Math.max(4, (d.count / maxCount) * 80)}px` }}
+                      />
+                      <span className="font-body text-[10px] text-muted">{d.day}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-2 mt-4">
+                  {[
+                    { label: `Avg ${avgPerDay}/day` },
+                    { label: `Lowest ${lowest}` },
+                    { label: `Highest ${highest}` },
+                  ].map(s => (
+                    <span key={s.label} className="bg-surface px-3 py-1 rounded-chip font-body text-xs text-body">
+                      {s.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search */}
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search location, trigger, notes"
+                className="w-full bg-surface border border-border rounded-input px-4 py-3 font-body text-sm text-foreground placeholder:text-muted focus:border-primary outline-none"
+              />
+
+              {/* Entries */}
+              {grouped.map(([date, entries]) => (
+                <div key={date} className="space-y-2">
+                  <p className="font-body text-[13px] text-muted">{date}</p>
+                  {entries.map(entry => (
+                    <div key={entry.id} className="bg-card rounded-xl p-3 px-4 relative overflow-hidden">
+                      <button
+                        onClick={() => handleRemove(entry.id)}
+                        className="absolute right-0 top-0 bottom-0 w-[40px] bg-alert/10 flex items-center justify-center text-alert hover:bg-alert hover:text-white transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                      <div className="flex items-center justify-between gap-2 pr-8">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="bg-surface px-2 py-1 rounded-chip font-body text-xs text-body">
+                            {formatTimeIST(new Date(entry.timestamp))}
+                          </span>
+                          <span className="bg-primary px-2 py-1 rounded-chip font-body text-xs text-primary-foreground">
+                            {entry.count} cig{entry.count > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          {entry.location && <span className="font-body text-xs text-muted">{entry.location}</span>}
+                          {entry.triggers[0] && <span className="font-body text-xs text-muted">{entry.triggers[0]}</span>}
+                        </div>
+                      </div>
+                      {entry.notes && <p className="font-body text-xs text-muted mt-1 truncate">{entry.notes}</p>}
+                    </div>
+                  ))}
                 </div>
               ))}
-            </div>
 
-            <div className="flex gap-2 mt-4">
-              {[
-                { label: `Avg ${avgPerDay}/day` },
-                { label: `Lowest ${lowest}` },
-                { label: `Highest ${highest}` },
-              ].map(s => (
-                <span key={s.label} className="bg-surface px-3 py-1 rounded-chip font-body text-xs text-body">
-                  {s.label}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Search */}
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search location, trigger, notes"
-            className="w-full bg-surface border border-border rounded-input px-4 py-3 font-body text-sm text-foreground placeholder:text-muted focus:border-primary outline-none"
-          />
-
-          {/* Entries */}
-          {grouped.map(([date, entries]) => (
-            <div key={date} className="space-y-2">
-              <p className="font-body text-[13px] text-muted">{date}</p>
-              {entries.map(entry => (
-                <div key={entry.id} className="bg-card rounded-xl p-3 px-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="bg-surface px-2 py-1 rounded-chip font-body text-xs text-body">
-                        {formatTimeIST(new Date(entry.timestamp))}
-                      </span>
-                      <span className="bg-primary px-2 py-1 rounded-chip font-body text-xs text-primary-foreground">
-                        {entry.count} cig{entry.count > 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap justify-end">
-                      {entry.location && <span className="font-body text-xs text-muted">{entry.location}</span>}
-                      {entry.triggers[0] && <span className="font-body text-xs text-muted">{entry.triggers[0]}</span>}
-                    </div>
-                  </div>
-                  {entry.notes && <p className="font-body text-xs text-muted mt-1 truncate">{entry.notes}</p>}
-                </div>
-              ))}
-            </div>
-          ))}
-
-          {grouped.length === 0 && (
-            <p className="text-center font-body text-sm text-muted py-8">No entries recorded yet.</p>
+              {grouped.length === 0 && (
+                <p className="text-center font-body text-sm text-muted py-8">No entries recorded yet.</p>
+              )}
+            </>
           )}
         </div>
 

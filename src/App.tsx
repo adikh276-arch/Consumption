@@ -13,7 +13,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner position="bottom-center" toastOptions={{ style: { background: 'white', border: '1px solid hsl(220 16% 88%)', borderRadius: '12px', color: 'hsl(222 47% 11%)', fontFamily: 'DM Sans, sans-serif', fontSize: '14px' }, duration: 2500 }} />
-      <BrowserRouter>
+      <BrowserRouter basename="/consumption">
         <Routes>
           <Route path="/" element={<Index />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

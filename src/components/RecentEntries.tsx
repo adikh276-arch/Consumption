@@ -1,6 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { SmokeLog } from '@/types/smoking';
-import { getLogs, removeLog, formatTimeIST } from '@/utils/storage';
+import { getUserId } from '@/lib/auth';
+import { getSmokeLogs, deleteSmokingLog } from '@/lib/db';
+import { formatTimeIST } from '@/utils/storage';
 import { toast } from 'sonner';
 
 interface RecentEntriesProps {
@@ -8,7 +10,7 @@ interface RecentEntriesProps {
   onViewAll: () => void;
 }
 
-const EntryRow: React.FC<{ entry: SmokeLog; onRemove: (id: string) => void }> = ({ entry, onRemove }) => {
+const EntryRow: React.FC<{ entry: SmokeLog; onRemove: (id: string) => Promise<void> }> = ({ entry, onRemove }) => {
   const [offsetX, setOffsetX] = useState(0);
   const startX = useRef(0);
   const dragging = useRef(false);
@@ -24,10 +26,10 @@ const EntryRow: React.FC<{ entry: SmokeLog; onRemove: (id: string) => void }> = 
     if (diff < 0) setOffsetX(Math.max(diff, -80));
   };
 
-  const onTouchEnd = () => {
+  const onTouchEnd = async () => {
     dragging.current = false;
     if (offsetX < -50) {
-      onRemove(entry.id);
+      await onRemove(entry.id);
     }
     setOffsetX(0);
   };
@@ -65,13 +67,39 @@ const EntryRow: React.FC<{ entry: SmokeLog; onRemove: (id: string) => void }> = 
 };
 
 const RecentEntries: React.FC<RecentEntriesProps> = ({ refreshKey, onViewAll }) => {
-  const logs = getLogs().slice(0, 5);
+  const [logs, setLogs] = useState<SmokeLog[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleRemove = (id: string) => {
-    removeLog(id);
-    toast('Entry removed');
+  useEffect(() => {
+    const fetchLogs = async () => {
+      const userId = getUserId();
+      if (!userId) return;
+      try {
+        const data = await getSmokeLogs(userId);
+        setLogs(data.slice(0, 5));
+      } catch (error) {
+        console.error("Failed to fetch logs:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLogs();
+  }, [refreshKey]);
+
+  const handleRemove = async (id: string) => {
+    const userId = getUserId();
+    if (!userId) return;
+    try {
+      await deleteSmokingLog(userId, id);
+      setLogs(prev => prev.filter(l => l.id !== id));
+      toast('Entry removed');
+    } catch (error) {
+      console.error("Failed to remove log:", error);
+      toast.error('Failed to remove entry');
+    }
   };
 
+  if (loading) return <div className="p-4 text-center text-xs text-muted font-body">Loading...</div>;
   if (logs.length === 0) return null;
 
   return (

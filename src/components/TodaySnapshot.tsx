@@ -1,14 +1,43 @@
-import React from 'react';
-import { getTodayLogs, getProfile, formatIndianNumber } from '@/utils/storage';
+import React, { useState, useEffect } from 'react';
+import { SmokingProfile, SmokeLog } from '@/types/smoking';
+import { getUserId } from '@/lib/auth';
+import { getSmokeLogs, getSmokingProfile } from '@/lib/db';
+import { formatDateDMY } from '@/utils/storage';
 
 interface TodaySnapshotProps {
   refreshKey: number;
 }
 
 const TodaySnapshot: React.FC<TodaySnapshotProps> = ({ refreshKey }) => {
-  const todayLogs = getTodayLogs();
-  const profile = getProfile();
-  const totalToday = todayLogs.reduce((s, l) => s + l.count, 0);
+  const [logs, setLogs] = useState<SmokeLog[]>([]);
+  const [profile, setProfile] = useState<SmokingProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const userId = getUserId();
+      if (!userId) return;
+      try {
+        const [logsData, profileData] = await Promise.all([
+          getSmokeLogs(userId),
+          getSmokingProfile(userId)
+        ]);
+        const todayStr = formatDateDMY(new Date());
+        const todayLogs = logsData.filter(l => formatDateDMY(new Date(l.timestamp)) === todayStr);
+        setLogs(todayLogs);
+        setProfile(profileData);
+      } catch (error) {
+        console.error("Failed to fetch today data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [refreshKey]);
+
+  if (loading) return <div className="p-4 text-center text-xs text-muted font-body">Loading today's snapshots...</div>;
+
+  const totalToday = logs.reduce((s, l) => s + l.count, 0);
   const nicotine = profile ? (totalToday * profile.nicotineMg).toFixed(1) : '0';
   const tar = profile ? (totalToday * profile.tarMg).toFixed(1) : '0';
   const packEquiv = profile ? (totalToday / profile.perPack).toFixed(1) : '0';
