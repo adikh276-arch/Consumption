@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import Stepper from './Stepper';
 import Chip from './Chip';
 import MoodSelector from './MoodSelector';
@@ -6,22 +6,26 @@ import { LOCATIONS, TRIGGERS, SmokeLog } from '@/types/smoking';
 import { addLog, generateId, formatTimeIST } from '@/utils/storage';
 import { toast } from 'sonner';
 
+const COOLDOWN_MS = 10_000; // 10 second cooldown
+
 const LogCard: React.FC<{ onSaved: () => void }> = ({ onSaved }) => {
   const [count, setCount] = useState(1);
   const [location, setLocation] = useState('');
   const [triggers, setTriggers] = useState<string[]>([]);
   const [mood, setMood] = useState('');
   const [notes, setNotes] = useState('');
-  const [time, setTime] = useState(new Date());
-  const timeRef = useRef<HTMLInputElement>(null);
+  const [cooldown, setCooldown] = useState(false);
+  const [cooldownSec, setCooldownSec] = useState(0);
 
   const toggleTrigger = (t: string) =>
     setTriggers(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
 
   const handleSave = () => {
+    if (cooldown) return;
+    const now = new Date();
     const entry: SmokeLog = {
       id: generateId(),
-      timestamp: time.toISOString(),
+      timestamp: now.toISOString(),
       count,
       location,
       triggers,
@@ -29,34 +33,37 @@ const LogCard: React.FC<{ onSaved: () => void }> = ({ onSaved }) => {
       notes,
     };
     addLog(entry);
-    toast(`Entry saved — ${count} cigarette(s) at ${formatTimeIST(time)}`);
+    toast(`Entry saved — ${count} cigarette(s) at ${formatTimeIST(now)}`);
     setCount(1);
     setLocation('');
     setTriggers([]);
     setMood('');
     setNotes('');
-    setTime(new Date());
     onSaved();
-  };
 
-  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const [h, m] = e.target.value.split(':').map(Number);
-    const d = new Date(time);
-    d.setHours(h, m);
-    setTime(d);
+    // Start cooldown
+    setCooldown(true);
+    let remaining = COOLDOWN_MS / 1000;
+    setCooldownSec(remaining);
+    const interval = setInterval(() => {
+      remaining -= 1;
+      setCooldownSec(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+        setCooldown(false);
+      }
+    }, 1000);
   };
 
   return (
     <div className="bg-card rounded-card border border-border p-5 space-y-4">
       <h2 className="font-heading text-[15px] font-semibold text-foreground">Record Session</h2>
 
-      {/* Quantity */}
       <div className="space-y-1">
         <Stepper value={count} min={1} max={20} onChange={setCount} />
         <p className="text-xs text-muted font-body text-center">cigarettes</p>
       </div>
 
-      {/* Location */}
       <div className="space-y-2">
         <label className="font-body text-sm text-body">Location</label>
         <div className="flex flex-wrap gap-2">
@@ -66,7 +73,6 @@ const LogCard: React.FC<{ onSaved: () => void }> = ({ onSaved }) => {
         </div>
       </div>
 
-      {/* Triggers */}
       <div className="space-y-2">
         <label className="font-body text-sm text-body">Contributing factor</label>
         <div className="flex flex-wrap gap-2">
@@ -76,34 +82,16 @@ const LogCard: React.FC<{ onSaved: () => void }> = ({ onSaved }) => {
         </div>
       </div>
 
-      {/* Mood */}
       <div className="space-y-2">
         <label className="font-body text-sm text-body">Mood prior</label>
         <MoodSelector value={mood} onChange={setMood} />
       </div>
 
-      {/* Time */}
       <div className="space-y-1">
         <label className="font-body text-sm text-body">Recorded at</label>
-        <div className="flex items-center gap-3">
-          <span className="font-body text-sm text-foreground">{formatTimeIST(time)}</span>
-          <button
-            type="button"
-            onClick={() => timeRef.current?.showPicker?.()}
-            className="font-body text-xs text-primary btn-press"
-          >
-            Edit time
-          </button>
-          <input
-            ref={timeRef}
-            type="time"
-            className="sr-only"
-            onChange={handleTimeChange}
-          />
-        </div>
+        <span className="font-body text-sm text-foreground">{formatTimeIST(new Date())}</span>
       </div>
 
-      {/* Notes */}
       <div className="space-y-2">
         <label className="font-body text-sm text-body">Notes</label>
         <input
@@ -114,8 +102,16 @@ const LogCard: React.FC<{ onSaved: () => void }> = ({ onSaved }) => {
         />
       </div>
 
-      <button onClick={handleSave} className="w-full h-[52px] bg-primary rounded-btn font-heading text-[15px] font-semibold text-primary-foreground tracking-[0.02em] btn-press">
-        Save Entry
+      <button
+        onClick={handleSave}
+        disabled={cooldown}
+        className={`w-full h-[52px] rounded-btn font-heading text-[15px] font-semibold tracking-[0.02em] btn-press transition-colors ${
+          cooldown
+            ? 'bg-muted text-background cursor-not-allowed'
+            : 'bg-primary text-primary-foreground'
+        }`}
+      >
+        {cooldown ? `Wait ${cooldownSec}s` : 'Save Entry'}
       </button>
     </div>
   );

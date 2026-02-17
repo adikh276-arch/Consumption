@@ -12,7 +12,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
-      <Sonner position="bottom-center" toastOptions={{ style: { background: 'hsl(222 36% 16%)', border: '1px solid hsl(220 37% 23%)', borderRadius: '12px', color: 'white', fontFamily: 'DM Sans, sans-serif', fontSize: '14px' }, duration: 2500 }} />
+      <Sonner position="bottom-center" toastOptions={{ style: { background: 'white', border: '1px solid hsl(220 16% 88%)', borderRadius: '12px', color: 'hsl(222 47% 11%)', fontFamily: 'DM Sans, sans-serif', fontSize: '14px' }, duration: 2500 }} />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
