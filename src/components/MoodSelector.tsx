@@ -14,7 +14,7 @@ const MoodSelector: React.FC<MoodSelectorProps> = ({ value, onChange }) => (
         type="button"
         onClick={() => onChange(m.value)}
         className={`flex flex-col items-center gap-1 py-2 rounded-xl bg-surface transition-all duration-150 btn-press ${
-          value === m.value ? 'border-2 border-primary bg-[hsl(213_40%_18%)]' : 'border border-transparent'
+          value === m.value ? 'border-2 border-primary bg-primary/10' : 'border border-transparent'
         }`}
       >
         <span className="text-xl">{m.emoji}</span>
